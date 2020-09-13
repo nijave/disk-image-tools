@@ -1,0 +1,67 @@
+From bff712819c9e8fec3f3ce3a57c4e603cf7262fff Mon Sep 17 00:00:00 2001
+From: Nick Venenga <nick@venenga.com>
+Date: Tue, 8 Sep 2020 17:09:46 -0400
+Subject: [PATCH] wip
+
+---
+ cloudinit/sources/DataSourceEc2.py | 30 +++++++++++++++++++++++++++++-
+ 1 file changed, 29 insertions(+), 1 deletion(-)
+
+diff --git a/cloudinit/sources/DataSourceEc2.py b/cloudinit/sources/DataSourceEc2.py
+index 355b4e2f..ca35475b 100644
+--- a/cloudinit/sources/DataSourceEc2.py
++++ b/cloudinit/sources/DataSourceEc2.py
+@@ -9,6 +9,7 @@
+ # This file is part of cloud-init. See LICENSE file for license information.
+ 
+ import os
++import pathlib
+ import time
+ 
+ from cloudinit import ec2_utils as ec2
+@@ -588,6 +589,33 @@ class DataSourceEc2Local(DataSourceEc2):
+         return super(DataSourceEc2Local, self).get_data()
+ 
+ 
++class DataSourceHypervKvp(DataSourceEc2):
++    KVP_PATH = pathlib.Path("/var/lib/hyperv/.kvp_pool_3")
++
++    def _get_data(self):
++        if not util.read_dmi_data('system-manufacturer') == "Microsoft Corporation" \
++                and util.read_dmi_data('system-product-name') == "Virtual Machine" \
++                and self.KVP_PATH.is_file():
++            return False
++
++        with open(self.KVP_PATH, "r") as f:
++            data = f.read()
++
++        md = {
++            # It looks like the nul terminated strings may have non nul data so stop reading when
++            # first nul byte is found after the data
++            c[0:c[0:512].find("\x00")]: c[512:512 + c[512:].find("\x00")]
++            for c in [data[i:i + 2560] for i in range(0, len(data), 2560)]
++        }
++
++        self.metadata.update({
++            "instance-id": md['VirtualMachineId'],
++            "local-hostname": md['VirtualMachineName'],
++        })
++
++        return True
++
++
+ def read_strict_mode(cfgval, default):
+     try:
+         return parse_strict_mode(cfgval)
+@@ -836,7 +864,7 @@ def _get_secondary_addresses(nic_metadata, cidr_key, mac, ips, default_prefix):
+ 
+ # Used to match classes to dependencies
+ datasources = [
+-    (DataSourceEc2Local, (sources.DEP_FILESYSTEM,)),  # Run at init-local
++    (DataSourceHypervKvp, (sources.DEP_FILESYSTEM,)),  # Run at init-local
+     (DataSourceEc2, (sources.DEP_FILESYSTEM, sources.DEP_NETWORK)),
+ ]
+ 
+-- 
+2.25.4
+

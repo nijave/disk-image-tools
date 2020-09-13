@@ -1,0 +1,6 @@
+guestfs
+pandas
+requests
+ruamel.yaml
+beautifulsoup4
+lxml

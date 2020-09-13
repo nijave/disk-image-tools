@@ -1,0 +1,6 @@
+.idea
+*.iml
+old/
+*.img
+*.vhd
+*.zip
