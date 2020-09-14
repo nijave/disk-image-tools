@@ -48,4 +48,7 @@ jobs:
           cache-to: type=local,dest=/tmp/.buildx-cache
 
       - name: Build Ubuntu image
-        run: docker run --rm ghcr.io/${{ github.repository }}:${{ github.sha }}
+        shell: bash
+        run: |
+          docker images
+          docker run --rm ghcr.io/${{ github.repository }}:${{ github.sha }}
