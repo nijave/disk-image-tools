@@ -50,5 +50,6 @@ jobs:
       - name: Build Ubuntu image
         shell: bash
         run: |
+          df -h
           docker images
-          docker run --rm ghcr.io/${{ github.repository }}:${{ github.sha }}
+          docker run --rm ghcr.io/${{ github.repository }}:${{ github.sha }} --ubuntu-suffix="-server-cloudimg-amd64.img"
