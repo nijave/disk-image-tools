@@ -4,5 +4,5 @@ set -e
 
 CONTAINER_TOOL=docker
 IMAGE_NAME=disk-image-tools
-"$CONTAINER_TOOL" build -t "$IMAGE_NAME" .
+[ -f "Dockerfile" ] && "$CONTAINER_TOOL" build -t "$IMAGE_NAME" .
 "$CONTAINER_TOOL" run -it --rm -v "$(pwd)":/image:rw "$IMAGE_NAME"
