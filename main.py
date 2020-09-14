@@ -256,9 +256,10 @@ def mount(working_image: str) -> guestfs.GuestFS:
     return g
 
 
-def build_ubuntu(image_suffix: str = "-server-cloudimg-amd64-azure.vhd.zip") -> str:
+def build_ubuntu(
+    ubuntu_codename: str, image_suffix: str = "-server-cloudimg-amd64-azure.vhd.zip"
+) -> str:
     datestamp = datetime.datetime.now().strftime("%Y%m%d")
-    ubuntu_codename = get_ubuntu_lts_codename()
     original_image = ensure_image_downloaded(ubuntu_codename, image_suffix)[1]
     working_image = f"{datestamp}_{original_image}"
     logger.info("Creating copy of disk image %s to %s", original_image, working_image)
@@ -371,7 +372,8 @@ if __name__ == "__main__":
         os.chdir(working_dir)
 
     # image = build_ubuntu(image_suffix="-server-cloudimg-amd64.img")
-    image = build_ubuntu()
+    ubuntu_codename = get_ubuntu_lts_codename()
+    image = build_ubuntu(ubuntu_codename)
 
     if args.resize:
         logger.info("Resizing image %s by %s", image, args.resize)
