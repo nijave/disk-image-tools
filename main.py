@@ -2,6 +2,7 @@
 dnf install -y python3-pip libguestfs
 pip install /vendor/*.whl
 """
+import argparse
 import crypt
 import ctypes
 import datetime
@@ -12,6 +13,7 @@ import os
 import pathlib
 import re
 import shutil
+import subprocess
 import sys
 import time
 import typing
@@ -62,8 +64,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 SCRIPT_DIR = pathlib.Path(__file__).parent.absolute()
-if os.environ["DISK_IMAGE_DIRECTORY"]:
-    os.chdir(os.environ["DISK_IMAGE_DIRECTORY"])
 
 
 def get_ubuntu_lts_codename() -> str:
@@ -98,9 +98,11 @@ def get_ubuntu_lts_codename() -> str:
     return short_code_name
 
 
-def ensure_image_downloaded(codename) -> typing.Tuple[bool, str]:
+def ensure_image_downloaded(
+    codename: str, image_suffix: str
+) -> typing.Tuple[bool, str]:
     # image_file_name = f"{codename}-server-cloudimg-amd64.img"
-    image_file_name = f"{codename}-server-cloudimg-amd64-azure.vhd.zip"
+    image_file_name = f"{codename}{image_suffix}"
 
     logger.info("Getting sha256 list for %s", codename)
     image_hashes = requests.get(
@@ -209,116 +211,185 @@ def guestfs_event_logger(event, event_handle, message, arr):
     logger.info(
         f"guestfs: %s %s",
         guestfs.event_to_string(event),
-        message.encode('unicode_escape').decode('ascii') if isinstance(message, str) else message,
+        message.encode("unicode_escape").decode("ascii")
+        if isinstance(message, str)
+        else message,
     )
 
 
-datestamp = datetime.datetime.now().strftime("%Y%m%d")
-ubuntu_codename = get_ubuntu_lts_codename()
-original_image = ensure_image_downloaded(ubuntu_codename)[1]
-working_image = f"{datestamp}_{original_image}"
-logger.info("Creating copy of disk image %s to %s", original_image, working_image)
-shutil.copy2(original_image, working_image)
-logger.info("Making disk image copy writeable")
-os.chmod(working_image, 0o600)
-
-g = guestfs.GuestFS(python_return_dict=True)
-g.add_drive_opts(
-    working_image, format={"img": "qcow2", "vhd": "vpc"}.get(working_image.split(".")[-1], None), readonly=False,
-)
-g.set_event_callback(
-    guestfs_event_logger, event_bitmask=guestfs.EVENT_ALL
-)
-g.set_trace(True)
-g.set_autosync(True)
-g.set_backend("direct")
-
-g.launch()
-g.inspect_os()
-
-roots = g.inspect_get_roots()
-logger.info("Found roots: %s", roots)
-assert len(roots) == 1
-root = roots[0]
-
-logger.info(f"Root filesystem is {g.list_filesystems()[root]}")
-logger.info(f"Product: {g.inspect_get_product_name(root)}")
-logger.info(
-    f"Version: {g.inspect_get_major_version(root)}.{g.inspect_get_minor_version(root)}"
-)
-logger.info(f"Type: {g.inspect_get_type(root)}")
-logger.info(f"Distro: {g.inspect_get_distro(root)}")
-
-g.mount(root, "/")
-
-# release_detail_files = [f["name"] for f in g.readdir("/etc") if "release" in f["name"]]
-# for f in release_detail_files:
-#     logger.info(f"Reading /etc/{f}")
-#     logger.info(g.read_file(f"/etc/{f}").decode().strip())
-
-# Add root account password
-shadow = g.read_file("/etc/shadow").decode()
-passwd = crypt.crypt("password", crypt.mksalt())
-shadow = shadow.replace("root:*", f"root:{passwd}")
-g.write("/etc/shadow", shadow)
-
-netplan_config = io.StringIO()
-ruamel.yaml.YAML().dump(
-    {
-        "network": {
-            "version": 2,
-            "renderer": "networkd",  # or NetworkManager
-            "ethernets": {
-                "enp0s2": {"dhcp4": True, "dhcp6": True,}
-            },  # is interface name stable?
-        }
-    },
-    netplan_config,
-)
-netplan_config.seek(0)
-
-# Configure netplan
-g.write("/etc/netplan/default.yaml", netplan_config.read())
-
-# Configure link-local on-link route on startup
-cloud_init_override_path = "/etc/systemd/system/cloud-init.service.d/01-add-route.conf"
-g.mkdir_p("/".join(cloud_init_override_path.split("/")[:-1]))
-g.write(
-    cloud_init_override_path,
+def guess_image_format(image: str) -> str:
     """
-[Service]
-ExecStartPre=/bin/bash -c 'ip route add 169.254.169.0/24 dev "$(ls /sys/class/net | grep -v lo | head -n 1)"'
-""".strip(),
-)
-g.chown(0, 0, cloud_init_override_path)  # root=0, root=0
-g.chmod(0o644, cloud_init_override_path)
+    Tries to guess a disk image format
+    :param image: filename
+    :return: format for use with guestfs/qemu
+    """
+    ext = image.split(".")[-1]
+    return {"img": "qcow2", "vhd": "vpc"}.get(ext, ext)
 
-# Configure cloud-init datasource
-cloud_init_config_path = "/etc/cloud/cloud.cfg.d/99-ec2-datasource.cfg"
-datasource_config = io.StringIO()
-ruamel.yaml.YAML().dump(
-    {"datasource": {"Ec2": {"strict_id": False},}}, datasource_config,
-)
-datasource_config.seek(0)
-g.write(
-    cloud_init_config_path, datasource_config.read(),
-)
 
-# Override some parts of the Ec2LocalDataSource to instead pull
-# information from Hyper-V KVP service (Data Exchange)
-g.copy_in(
-    str(SCRIPT_DIR / "0001-cloudinit.patch"),
-    "/usr/lib/python3/dist-packages"
-)
-g.command([
-    "patch", "-p1",
-    "-d", "/usr/lib/python3/dist-packages",
-    "/usr/lib/python3/dist-packages/cloudinit/sources/DataSourceEc2.py",
-    "/usr/lib/python3/dist-packages/0001-cloudinit.patch"
-])
+def mount(working_image: str) -> guestfs.GuestFS:
+    g = guestfs.GuestFS(python_return_dict=True)
+    g.add_drive_opts(
+        working_image, format=guess_image_format(working_image), readonly=False,
+    )
+    g.set_event_callback(guestfs_event_logger, event_bitmask=guestfs.EVENT_ALL)
+    g.set_trace(True)
+    g.set_autosync(True)
+    g.set_backend("direct")
 
-# Don't close the image if interpreter will drop to interactive mode
-if "-i" not in get_python_interpreter_arguments():
-    g.close()
+    g.launch()
+    g.inspect_os()
 
-print(working_image, end="")
+    roots = g.inspect_get_roots()
+    logger.info("Found roots: %s", roots)
+    assert len(roots) == 1
+    root = roots[0]
+
+    logger.info(f"Root filesystem is {g.list_filesystems()[root]}")
+    logger.info(f"Product: {g.inspect_get_product_name(root)}")
+    logger.info(
+        f"Version: {g.inspect_get_major_version(root)}.{g.inspect_get_minor_version(root)}"
+    )
+    logger.info(f"Type: {g.inspect_get_type(root)}")
+    logger.info(f"Distro: {g.inspect_get_distro(root)}")
+
+    g.mount(root, "/")
+
+    return g
+
+
+def build_ubuntu(image_suffix: str = "-server-cloudimg-amd64-azure.vhd.zip") -> str:
+    datestamp = datetime.datetime.now().strftime("%Y%m%d")
+    ubuntu_codename = get_ubuntu_lts_codename()
+    original_image = ensure_image_downloaded(ubuntu_codename, image_suffix)[1]
+    working_image = f"{datestamp}_{original_image}"
+    logger.info("Creating copy of disk image %s to %s", original_image, working_image)
+    shutil.copy2(original_image, working_image)
+    logger.info("Making disk image copy writeable")
+    os.chmod(working_image, 0o600)
+    g = mount(working_image)
+
+    # release_detail_files = [f["name"] for f in g.readdir("/etc") if "release" in f["name"]]
+    # for f in release_detail_files:
+    #     logger.info(f"Reading /etc/{f}")
+    #     logger.info(g.read_file(f"/etc/{f}").decode().strip())
+
+    # Add root account password
+    shadow = g.read_file("/etc/shadow").decode()
+    root_password = "password"
+    logger.warning("Setting root password to '%s'", root_password)
+    passwd = crypt.crypt(root_password, crypt.mksalt())
+    shadow = shadow.replace("root:*", f"root:{passwd}")
+    g.write("/etc/shadow", shadow)
+
+    netplan_config = io.StringIO()
+    ruamel.yaml.YAML().dump(
+        {
+            "network": {
+                "version": 2,
+                "renderer": "networkd",  # or NetworkManager
+                "ethernets": {
+                    "enp0s2": {"dhcp4": True, "dhcp6": True,}
+                },  # is interface name stable?
+            }
+        },
+        netplan_config,
+    )
+    netplan_config.seek(0)
+
+    # Configure netplan
+    g.write("/etc/netplan/default.yaml", netplan_config.read())
+
+    # Configure link-local on-link route on startup
+    cloud_init_override_path = (
+        "/etc/systemd/system/cloud-init.service.d/01-add-route.conf"
+    )
+    g.mkdir_p("/".join(cloud_init_override_path.split("/")[:-1]))
+    g.write(
+        cloud_init_override_path,
+        """
+    [Service]
+    ExecStartPre=/bin/bash -c 'ip route add 169.254.169.0/24 dev "$(ls /sys/class/net | grep -v lo | head -n 1)"'
+    """.strip(),
+    )
+    g.chown(0, 0, cloud_init_override_path)  # root=0, root=0
+    g.chmod(0o644, cloud_init_override_path)
+
+    # Configure cloud-init datasource
+    cloud_init_config_path = "/etc/cloud/cloud.cfg.d/99-ec2-datasource.cfg"
+    datasource_config = io.StringIO()
+    ruamel.yaml.YAML().dump(
+        {"datasource": {"Ec2": {"strict_id": False},}}, datasource_config,
+    )
+    datasource_config.seek(0)
+    g.write(
+        cloud_init_config_path, datasource_config.read(),
+    )
+
+    # Override some parts of the Ec2LocalDataSource to instead pull
+    # information from Hyper-V KVP service (Data Exchange)
+    g.copy_in(
+        str(SCRIPT_DIR / "0001-cloudinit.patch"), "/usr/lib/python3/dist-packages"
+    )
+    g.command(
+        [
+            "patch",
+            "-p1",
+            "-d",
+            "/usr/lib/python3/dist-packages",
+            "/usr/lib/python3/dist-packages/cloudinit/sources/DataSourceEc2.py",
+            "/usr/lib/python3/dist-packages/0001-cloudinit.patch",
+        ]
+    )
+
+    # Don't close the image if interpreter will drop to interactive mode
+    if "-i" not in get_python_interpreter_arguments():
+        g.close()
+
+    return working_image
+
+
+if __name__ == "__main__":
+    if os.environ.get("DISK_IMAGE_DIRECTORY"):
+        os.chdir(os.environ["DISK_IMAGE_DIRECTORY"])
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--convert",
+        nargs="?",
+        const="vhd",
+        type=str,
+        help="Converts the image to a different format with qemu-image convert (default is vhd)",
+    )
+    parser.add_argument(
+        "--resize", help="Resize the disk image using qemu-img resize (i.e. +18G)"
+    )
+
+    args = parser.parse_args()
+
+    image = build_ubuntu(image_suffix="-server-cloudimg-amd64.img")
+
+    if args.resize:
+        logger.info("Resizing image %s by %s", image, args.resize)
+        subprocess.check_output(["qemu-img", "resize", image, args.resize])
+        logger.info("Resize complete")
+
+    if args.convert:
+        fmt = args.convert if args.convert != "vhd" else "vpc"
+        logger.info("Converting image to format %s", fmt)
+        new_image = ".".join(image.split(".")[:-1] + [args.convert])
+        subprocess.check_output(
+            [
+                "qemu-img",
+                "convert",
+                "-f",
+                guess_image_format(image),
+                "-O",
+                fmt,
+                image,
+                new_image,
+            ]
+        )
+        image = new_image
+
+    print(image, end="")
