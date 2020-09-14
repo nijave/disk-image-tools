@@ -17,6 +17,7 @@ RUN bash -c "cd /home/build/libguestfs* && make INSTALLDIRS=vendor DESTDIR=/ ins
 
 FROM docker.io/library/fedora as disk-image-tools
 RUN dnf install -y python3-pip findutils && dnf deplist libguestfs | awk '/provider:/ {print $2}' | sort -u | grep "$(uname -m)\$" | xargs dnf install -y
+ENV LIBGUESTFS_PATH=/usr/local/lib/guestfs
 COPY --from=libguestfs /usr/local /usr/local
 COPY --from=libguestfs /io /io
 RUN echo /usr/local/lib > /etc/ld.so.conf.d/local.conf && ldconfig
@@ -28,7 +29,7 @@ WORKDIR /home/build
 COPY requirements.txt /home/build
 RUN python3 -m pip install --no-cache-dir --user --upgrade -r requirements.txt --find-links /io
 
-COPY main.py /home/build/
+COPY . /home/build/
 WORKDIR /image
 ENTRYPOINT ["python3", "/home/build/main.py"]
 CMD []
