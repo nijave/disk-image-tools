@@ -15,7 +15,7 @@ RUN /home/build/guestfs_install.sh
 USER root
 RUN bash -c "cd /home/build/libguestfs* && make INSTALLDIRS=vendor DESTDIR=/ install"
 
-FROM libguestfs as disk_image
+FROM libguestfs as disk-image-tools
 USER build
 
 COPY requirements.txt /home/build
