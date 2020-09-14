@@ -350,9 +350,6 @@ def build_ubuntu(image_suffix: str = "-server-cloudimg-amd64-azure.vhd.zip") -> 
 
 
 if __name__ == "__main__":
-    if os.environ.get("DISK_IMAGE_DIRECTORY"):
-        os.chdir(os.environ["DISK_IMAGE_DIRECTORY"])
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--convert",
@@ -364,8 +361,16 @@ if __name__ == "__main__":
     parser.add_argument(
         "--resize", help="Resize the disk image using qemu-img resize (i.e. +18G)"
     )
+    parser.add_argument(
+        "--work-dir",
+        help="Set working directory (where image will be downloaded and final image will be created)",
+    )
 
     args = parser.parse_args()
+
+    working_dir = args.work_dir or os.environ.get("WORK_DIR")
+    if working_dir:
+        os.chdir(working_dir)
 
     # image = build_ubuntu(image_suffix="-server-cloudimg-amd64.img")
     image = build_ubuntu()
