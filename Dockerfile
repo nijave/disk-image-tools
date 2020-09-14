@@ -21,6 +21,7 @@ USER build
 COPY requirements.txt /home/build
 RUN python3 -m pip install --user --upgrade -r requirements.txt --find-links /io
 
-COPY main.py convert_image.sh /home/build/
+COPY main.py /home/build/
 WORKDIR /image
-CMD ["/bin/bash", "-c", "python3 /home/build/main.py && /home/build/convert_image.sh"]
+ENTRYPOINT ["python3", "/home/build/main.py"]
+CMD []
