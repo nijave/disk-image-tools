@@ -46,3 +46,6 @@ jobs:
             ghcr.io/${{ github.repository }}:${{ steps.extract_branch.outputs.branch }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache
+
+      - name: Build Ubuntu image
+        run: docker run --rm ghcr.io/${{ github.repository }}:${{ github.sha }}
