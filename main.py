@@ -367,7 +367,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    image = build_ubuntu(image_suffix="-server-cloudimg-amd64.img")
+    # image = build_ubuntu(image_suffix="-server-cloudimg-amd64.img")
+    image = build_ubuntu()
 
     if args.resize:
         logger.info("Resizing image %s by %s", image, args.resize)
