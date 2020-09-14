@@ -1,7 +1,3 @@
-"""
-dnf install -y python3-pip libguestfs
-pip install /vendor/*.whl
-"""
 import argparse
 import crypt
 import ctypes
@@ -19,6 +15,22 @@ import time
 import typing
 import zipfile
 import zlib
+
+import guestfs
+import pandas as pd
+import requests
+import ruamel.yaml
+from bs4 import BeautifulSoup
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S%z",
+    stream=sys.stderr,
+)
+logger = logging.getLogger(__name__)
+
+SCRIPT_DIR = pathlib.Path(__file__).parent.absolute()
 
 """
 1.40.x that ships with Fedora 31 has a bug in the Python bindings used for
@@ -47,23 +59,9 @@ sudo dnf install --allowerasing \
     https://download-ib01.fedoraproject.org/pub/fedora/linux/releases/32/Everything/x86_64/os/Packages/l/libguestfs-tools-c-1.42.0-2.fc32.x86_64.rpm \
     https://download-ib01.fedoraproject.org/pub/fedora/linux/releases/32/Everything/x86_64/os/Packages/l/libguestfs-xfs-1.42.0-2.fc32.x86_64.rpm
 """
-
-
-import guestfs
-import pandas as pd
-import requests
-import ruamel.yaml
-from bs4 import BeautifulSoup
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S%z",
-    stream=sys.stderr,
-)
-logger = logging.getLogger(__name__)
-
-SCRIPT_DIR = pathlib.Path(__file__).parent.absolute()
+guestfs_version = guestfs.GuestFS().version()
+assert guestfs_version["major"] == 1
+assert guestfs_version["minor"] >= 42
 
 
 def get_ubuntu_lts_codename() -> str:
