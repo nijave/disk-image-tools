@@ -14,6 +14,7 @@ RUN /home/build/guestfs_install.sh
 
 USER root
 RUN bash -c "cd /home/build/libguestfs* && make INSTALLDIRS=vendor DESTDIR=/ install"
+RUN echo /usr/local/lib > /etc/ld.so.conf.d/local.conf && ldconfig
 
 FROM libguestfs as disk-image-tools
 USER build
