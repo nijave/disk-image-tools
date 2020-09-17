@@ -124,20 +124,15 @@ if __name__ == "__main__":
 
     if args.convert:
         fmt = args.convert if args.convert != "vhd" else "vpc"
-        logger.info("Converting image to format %s", fmt)
-        new_image = ".".join(image.split(".")[:-1] + [args.convert])
-        subprocess.check_output(
-            [
-                "qemu-img",
-                "convert",
-                "-f",
-                guess_image_format(image),
-                "-O",
-                fmt,
-                image,
-                new_image,
-            ]
-        )
-        image = new_image
+        old_fmt = guess_image_format(image)
+        if old_fmt == fmt:
+            logger.info("Skipping conversion since image is already in desired format")
+        else:
+            logger.info("Converting image to format %s", fmt)
+            new_image = ".".join(image.split(".")[:-1] + [args.convert])
+            subprocess.check_output(
+                ["qemu-img", "convert", "-f", old_fmt, "-O", fmt, image, new_image,]
+            )
+            image = new_image
 
-    print(image, end="")
+    print(image)
