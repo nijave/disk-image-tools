@@ -1,12 +1,11 @@
 import io
-
-import ruamel.yaml
+import logging
 import typing
 
 import pandas as pd
 import requests
+import ruamel.yaml
 from bs4 import BeautifulSoup
-import logging
 
 from configs.common import (
     download_file,
@@ -105,7 +104,7 @@ def build(ubuntu_codename: str, image_suffix: str) -> str:
     # Configure netplan
     g.write("/etc/netplan/default.yaml", netplan_config.read())
 
-    setup_cloud_init(ruamel, g)
+    setup_cloud_init(g)
 
     g.close()
 

@@ -7,14 +7,13 @@ import os
 import pathlib
 import re
 import shutil
-
-import guestfs
-import time
 import zipfile
 
-import zlib
-
+import guestfs
 import requests
+import ruamel.yaml
+import time
+import zlib
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +164,7 @@ def set_root_password(g, pwd):
     g.write("/etc/shadow", shadow)
 
 
-def setup_cloud_init(ruamel, g):
+def setup_cloud_init(g):
     # Configure link-local on-link route on startup
     cloud_init_override_path = (
         "/etc/systemd/system/cloud-init.service.d/01-add-route.conf"
@@ -212,7 +211,7 @@ def setup_cloud_init(ruamel, g):
     g.copy_in(str(SCRIPT_DIR / "0001-cloudinit.patch"), python_package_path)
     g.command(
         [
-            "patch",
+            "/usr/bin/patch",
             "-p1",
             "-d",
             python_package_path,
