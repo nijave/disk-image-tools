@@ -52,4 +52,5 @@ jobs:
         run: |
           df -h
           docker images
-          docker run --rm ghcr.io/${{ github.repository }}:${{ github.sha }} --ubuntu-suffix="-server-cloudimg-amd64.img"
+          docker run --rm ghcr.io/${{ github.repository }}:${{ github.sha }} --image ubuntu --image-suffix="-server-cloudimg-amd64.img"
+          docker run --rm ghcr.io/${{ github.repository }}:${{ github.sha }} --image centos

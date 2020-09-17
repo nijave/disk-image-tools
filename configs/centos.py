@@ -98,5 +98,7 @@ def build() -> str:
 
     g.command(["rpm", "-i", "/tmp/*.rpm"])
 
+    g.close()
+
     return working_image
     # return g

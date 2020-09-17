@@ -89,9 +89,14 @@ if __name__ == "__main__":
         help="Set working directory (where image will be downloaded and final image will be created)",
     )
     parser.add_argument(
-        "--ubuntu-suffix",
-        default="-server-cloudimg-amd64-azure.vhd.zip",
-        help="Suffix for downloading the Ubuntu Cloud image (i.e. {ubuntu_lts_codename}{image_suffix})",
+        "--image",
+        choices=["centos", "ubuntu"],
+        required=True,
+        help="The name of the image to create",
+    )
+    parser.add_argument(
+        "--image-suffix",
+        help="Suffix for downloading the Cloud image (i.e. {ubuntu_lts_codename}{image_suffix})",
     )
 
     args = parser.parse_args()
@@ -101,9 +106,16 @@ if __name__ == "__main__":
         os.chdir(working_dir)
 
     # image = build_ubuntu(image_suffix="-server-cloudimg-amd64.img")
-    ubuntu_codename = configs.ubuntu.get_lts_codename()
-    image = configs.ubuntu.build(ubuntu_codename, image_suffix=args.ubuntu_suffix)
-    # image = configs.centos.build()
+    if args.image == "ubuntu":
+        image_suffix = (
+            args.image_suffix
+            if args.image_suffix
+            else "-server-cloudimg-amd64-azure.vhd.zip"
+        )
+        ubuntu_codename = configs.ubuntu.get_lts_codename()
+        image = configs.ubuntu.build(ubuntu_codename, image_suffix=image_suffix)
+    elif args.image == "centos":
+        image = configs.centos.build()
 
     if args.resize:
         logger.info("Resizing image %s by %s", image, args.resize)
