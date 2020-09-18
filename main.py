@@ -123,6 +123,8 @@ if __name__ == "__main__":
             subprocess.check_output(
                 ["qemu-img", "convert", "-f", old_fmt, "-O", fmt, image, new_image,]
             )
+            logger.info("Removing original image %s", image)
+            os.remove(image)
             image = new_image
 
     print(image)

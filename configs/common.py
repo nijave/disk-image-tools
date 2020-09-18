@@ -7,13 +7,10 @@ import os
 import pathlib
 import re
 import shutil
-import zipfile
 
 import guestfs
 import requests
 import ruamel.yaml
-import time
-import zlib
 
 logger = logging.getLogger(__name__)
 
@@ -36,15 +33,6 @@ def check_file_hash(path, _hash):
     assert sha256_hash.hexdigest() == _hash
 
 
-def check_file_crc32(path, _crc):
-    with open(path, "rb") as f:
-        crc = 0
-        for byte_block in iter(lambda: f.read(4096), b""):
-            crc = zlib.crc32(byte_block, crc)
-    logger.info("Checking file %s matches %s", crc, _crc)
-    assert crc == _crc
-
-
 def download_file(latest_image_url, target_hash):
     image_file_name = latest_image_url.split("/")[-1]
     if not pathlib.Path(image_file_name).is_file():
@@ -58,33 +46,6 @@ def download_file(latest_image_url, target_hash):
             logger.warning("File hash didn't match. Attempting to download a new copy")
             save_file(latest_image_url, image_file_name)
             check_file_hash(image_file_name, target_hash)
-
-    if image_file_name.endswith(".zip"):
-        logger.info("Unzipping image file")
-        with zipfile.ZipFile(image_file_name) as zf:
-            file_details = sorted(zf.filelist, key=lambda i: i.file_size, reverse=True)[
-                0
-            ]
-            logger.info(
-                "Assuming largest file '%s' is the disk image", file_details.filename
-            )
-            image_file_name = re.sub(r"\.zip$", "", image_file_name)
-            try:
-                logger.info("Checking to see if file already exists")
-                check_file_crc32(image_file_name, file_details.CRC)
-                logger.info("Skipping extraction")
-            except (AssertionError, FileNotFoundError):
-                logger.info("Extracting %s", file_details.filename)
-                start = time.time()
-                zf.extract(file_details.filename, ".")
-                os.rename(file_details.filename, image_file_name)
-                end = time.time()
-                logger.info(
-                    "Extracted %i bytes in %d seconds (%d MB/s)",
-                    file_details.file_size,
-                    end - start,
-                    file_details.file_size / 1024 / 1024 / (end - start),
-                )
 
     logger.info("Image successfully downloaded")
     return True, image_file_name
