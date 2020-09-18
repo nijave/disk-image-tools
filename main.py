@@ -94,10 +94,6 @@ if __name__ == "__main__":
         required=True,
         help="The name of the image to create",
     )
-    parser.add_argument(
-        "--image-suffix",
-        help="Suffix for downloading the Cloud image (i.e. {ubuntu_lts_codename}{image_suffix})",
-    )
 
     args = parser.parse_args()
 
@@ -105,15 +101,9 @@ if __name__ == "__main__":
     if working_dir:
         os.chdir(working_dir)
 
-    # image = build_ubuntu(image_suffix="-server-cloudimg-amd64.img")
     if args.image == "ubuntu":
-        image_suffix = (
-            args.image_suffix
-            if args.image_suffix
-            else "-server-cloudimg-amd64-azure.vhd.zip"
-        )
         ubuntu_codename = configs.ubuntu.get_lts_codename()
-        image = configs.ubuntu.build(ubuntu_codename, image_suffix=image_suffix)
+        image = configs.ubuntu.build(ubuntu_codename)
     elif args.image == "centos":
         image = configs.centos.build()
 

@@ -59,7 +59,7 @@ jobs:
       - name: Build Ubuntu disk image
         shell: bash
         run: |
-          docker run --rm ghcr.io/${{ github.repository }}:${{ github.sha }} --image ubuntu --image-suffix="-server-cloudimg-amd64.img"
+          docker run --rm ghcr.io/${{ github.repository }}:${{ github.sha }} --image ubuntu --resize 20G --convert
 
   build_centos:
     needs: build_builder
@@ -74,4 +74,4 @@ jobs:
       - name: Build CentOS disk image
         shell: bash
         run: |
-          docker run --rm ghcr.io/${{ github.repository }}:${{ github.sha }} --image centos
+          docker run --rm ghcr.io/${{ github.repository }}:${{ github.sha }} --image centos --resize 20G --convert

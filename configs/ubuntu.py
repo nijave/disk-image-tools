@@ -13,6 +13,7 @@ from configs.common import (
     mount,
     set_root_password,
     setup_cloud_init,
+    save_file,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,11 +51,8 @@ def get_lts_codename() -> str:
     return short_code_name
 
 
-def ensure_image_downloaded(
-    codename: str, image_suffix: str
-) -> typing.Tuple[bool, str]:
-    # image_file_name = f"{codename}-server-cloudimg-amd64.img"
-    image_file_name = f"{codename}{image_suffix}"
+def ensure_image_downloaded(codename: str) -> typing.Tuple[bool, str]:
+    image_file_name = f"{codename}-server-cloudimg-amd64.img"
 
     logger.info("Getting sha256 list for %s", codename)
     image_hashes = requests.get(
@@ -74,8 +72,8 @@ def ensure_image_downloaded(
     return download_file(latest_image_url, target_hash)
 
 
-def build(ubuntu_codename: str, image_suffix: str) -> str:
-    original_image = ensure_image_downloaded(ubuntu_codename, image_suffix)[1]
+def build(ubuntu_codename: str) -> str:
+    original_image = ensure_image_downloaded(ubuntu_codename)[1]
     working_image = prepare_image_copy(original_image)
     g = mount(working_image)
 
@@ -85,6 +83,20 @@ def build(ubuntu_codename: str, image_suffix: str) -> str:
     #     logger.info(g.read_file(f"/etc/{f}").decode().strip())
 
     set_root_password(g, "password")
+
+    # Install linux-cloud-tools-common
+    kernel_packages = [
+        p
+        for p in g.command(["apt", "list", "--installed"]).splitlines()
+        if p.startswith("linux-image") and "generic" in p
+    ]
+    assert len(kernel_packages) == 1
+    kernel_version = kernel_packages[0].split()[1]
+    cloud_tools_url = f"http://archive.ubuntu.com/ubuntu/pool/main/l/linux/linux-cloud-tools-common_{kernel_version}_all.deb"
+    cloud_tools_file = cloud_tools_url.split("/")[-1]
+    save_file(cloud_tools_url, cloud_tools_file)
+    g.copy_in(cloud_tools_file, "/tmp")
+    g.command(["apt", "install", f"/tmp/{cloud_tools_file}"])
 
     netplan_config = io.StringIO()
     ruamel.yaml.YAML().dump(

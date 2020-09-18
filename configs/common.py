@@ -28,8 +28,8 @@ def save_file(uri, path):
 def check_file_hash(path, _hash):
     sha256_hash = hashlib.sha256()
     with open(path, "rb") as f:
-        # Read and update hash string value in blocks of 4K
-        for byte_block in iter(lambda: f.read(4096), b""):
+        # Read and update hash string value in blocks of 1M
+        for byte_block in iter(lambda: f.read(1024 ** 2), b""):
             sha256_hash.update(byte_block)
     file_hash = sha256_hash.hexdigest()
     logger.info("Checking file %s matches %s", file_hash, _hash)
