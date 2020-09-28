@@ -65,12 +65,13 @@ def prepare_image_copy(original_image):
 def mount(working_image: str) -> guestfs.GuestFS:
     g = guestfs.GuestFS(python_return_dict=True)
     g.add_drive_opts(
-        working_image, format=guess_image_format(working_image), readonly=False,
+        working_image, readonly=False,
     )
     g.set_event_callback(guestfs_event_logger, event_bitmask=guestfs.EVENT_ALL)
     g.set_trace(True)
     g.set_autosync(True)
     g.set_backend("direct")
+    g.set_network(True)  # enable networking
 
     g.launch()
     g.inspect_os()
