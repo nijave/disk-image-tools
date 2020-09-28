@@ -77,7 +77,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--convert",
         nargs="?",
-        const="vhd",
+        const="vhdx",
         type=str,
         help="Converts the image to a different format with qemu-image convert (default is vhd)",
     )
@@ -121,7 +121,7 @@ if __name__ == "__main__":
             logger.info("Converting image to format %s", fmt)
             new_image = ".".join(image.split(".")[:-1] + [args.convert])
             subprocess.check_output(
-                ["qemu-img", "convert", "-f", old_fmt, "-O", fmt, image, new_image,]
+                ["qemu-img", "convert", "-O", fmt, image, new_image,]
             )
             logger.info("Removing original image %s", image)
             os.remove(image)
