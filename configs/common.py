@@ -7,6 +7,8 @@ import os
 import pathlib
 import re
 import shutil
+import threading
+import uuid
 
 import guestfs
 import requests
@@ -181,3 +183,78 @@ def setup_cloud_init(g):
             f"{python_package_path}/0001-cloudinit.patch",
         ]
     )
+
+
+def build_esp(image_file: str) -> None:
+    """
+    Image file should be unmounted first. Creates a new image
+    with an ESP and copies the rootfs over from the old image
+
+    **Note OS may require additional configuration to finish setting
+    up the ESP
+    :param image_file:
+    :return:
+    """
+    pipe_name = str(uuid.uuid4())
+    logger.info("Created pipe %s to transfer image contents", pipe_name)
+    os.mkfifo(pipe_name)
+    new_image_file = f"{image_file}.tmp"
+    source = mount(image_file)
+    logger.info("Old root UUID %s", source.blkid("/dev/sda1"))
+    original_root_uuid = source.vfs_uuid("/dev/sda1")
+    image_format = source.disk_format(image_file)
+    logger.info("Source image disk format is %s", image_format)
+    target = guestfs.GuestFS(python_return_dict=True)
+    logger.info("Creating output disk image")
+    target.disk_create(
+        new_image_file,
+        image_format,
+        source.blockdev_getsize64(source.list_devices()[0]),
+        preallocation="metadata",
+    )
+    target.add_drive_opts(new_image_file, readonly=False)
+    target.launch()
+
+    # logger.info("Partitioning output image")
+    # target.part_disk("/dev/sda", "gpt")
+    # target.mkfs(new_fs, "/dev/sda1")
+    # logger.info("Mounting root filesystem in output image")
+    # target.mount("/dev/sda1", "/")
+    logger.info("Partitioning new disk image")
+    target.part_init("/dev/sda", "gpt")
+    target.part_add("/dev/sda", "p", 1024 * 256 + 1, -40)
+    target.part_add("/dev/sda", "p", 40, 1024 * 256)
+    target.part_set_bootable("/dev/sda", 2, True)
+    target.part_set_gpt_type(
+        "/dev/sda", 2, "C12A7328-F81F-11D2-BA4B-00A0C93EC93B"
+    )  # esp
+
+    logger.info("Creating and mounting filesystem")
+    target.mkfs_opts("xfs", "/dev/sda1")
+    target.set_uuid("/dev/sda1", original_root_uuid)
+    target.mkfs_opts("vfat", "/dev/sda2")
+    target.mount("/dev/sda1", "/")
+    target.mkdir("/boot")
+    target.mkdir("/boot/efi")
+    target.mount("/dev/sda2", "/boot/efi")
+
+    tar_out = threading.Thread(
+        target=lambda: source.tar_out_opts(
+            "/", pipe_name, xattrs=True, selinux=True, acls=True,
+        )
+    )
+    logger.info("Starting copy from source")
+    tar_out.start()
+    logger.info("Starting copy to target")
+    target.tar_in_opts(pipe_name, "/")
+    tar_out.join()
+    logger.info("Copy complete")
+
+    logger.info("Closing images")
+    source.close()
+    target.close()
+    logger.info("Deleting original disk image")
+    os.unlink(image_file)
+    os.unlink(pipe_name)
+    logger.info("Renaming temporary image to original (%s)", image_file)
+    os.rename(new_image_file, image_file)
